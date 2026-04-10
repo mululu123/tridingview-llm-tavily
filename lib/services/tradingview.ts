@@ -16,29 +16,47 @@ export interface TechnicalIndicators {
   recommendationSummary: { buy: number; sell: number; neutral: number };
 }
 
-function toTVSymbol(code: string): string {
-  const c = code.replace(/\D/g, "");
-  if (c.startsWith("6")) return `SSE:${c}`;
-  if (c.startsWith("0") || c.startsWith("3")) return `SZSE:${c}`;
-  if (c.startsWith("8") || c.startsWith("4")) return `BSE:${c}`;
-  return `SSE:${c}`;
+// Python 服务地址（Docker 部署时使用）
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || "http://localhost:8000";
+
+/**
+ * 从 Python 服务获取技术指标（优先）
+ */
+async function fetchFromPythonService(code: string, name?: string): Promise<TechnicalIndicators | null> {
+  try {
+    const response = await fetch(`${PYTHON_SERVICE_URL}/api/ta/${code}`, {
+      signal: AbortSignal.timeout(10000), // 10秒超时
+    });
+
+    if (!response.ok) {
+      console.log("[TradingView] Python service unavailable, fallback to RapidAPI");
+      return null;
+    }
+
+    const data = await response.json();
+    if (data.success && data.data) {
+      return {
+        ...data.data,
+        name: name || data.data.name,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.log("[TradingView] Python service error:", error);
+    return null;
+  }
 }
 
-export async function fetchTechnicalData(
-  stockCode: string,
-  stockName?: string
-): Promise<TechnicalIndicators | null> {
+/**
+ * 从 RapidAPI 获取技术指标（备选）
+ */
+async function fetchFromRapidAPI(code: string, name?: string): Promise<TechnicalIndicators | null> {
   const rapidApiKey = process.env.RAPIDAPI_KEY;
-  const code = stockCode.replace(/\D/g, "");
+  if (!rapidApiKey) return null;
+
   const symbol = toTVSymbol(code);
 
-  if (!rapidApiKey) {
-    console.log("[TradingView] No API key, using mock data");
-    return generateMockData(code, stockName);
-  }
-
   try {
-    // 获取报价
     const quoteResp = await fetch(
       `https://tradingview-data1.p.rapidapi.com/api/quote/${symbol}`,
       {
@@ -49,10 +67,7 @@ export async function fetchTechnicalData(
       }
     );
 
-    if (!quoteResp.ok) {
-      console.error(`[TradingView] Quote API error: ${quoteResp.status}`);
-      return generateMockData(code, stockName);
-    }
+    if (!quoteResp.ok) return null;
 
     const quoteData = await quoteResp.json();
     const q = quoteData?.data?.data || {};
@@ -69,22 +84,17 @@ export async function fetchTechnicalData(
           },
         }
       );
-
       if (taResp.ok) {
         const taData = await taResp.json();
         ind = taData?.data || {};
-      } else {
-        console.log("[TradingView] TA API limited, using quote data only");
       }
-    } catch (e) {
-      console.log("[TradingView] TA API error:", e);
+    } catch {
+      // TA API 限速，忽略
     }
-
-    const name = q.local_description || stockName || code;
 
     return {
       symbol: q.pro_name || symbol,
-      name,
+      name: q.local_description || name || code,
       close: q.lp || 0,
       change: q.ch || 0,
       changePercent: q.chp || 0,
@@ -96,10 +106,10 @@ export async function fetchTechnicalData(
         histogram: Number(((ind["MACD.macd"] || 0) - (ind["MACD.signal"] || 0)).toFixed(4)),
       },
       ma: {
-        ma5: Number((ind.SMA10 || ind.EMA10 || 0).toFixed(2)),
-        ma10: Number((ind.SMA20 || ind.EMA20 || 0).toFixed(2)),
-        ma20: Number((ind.SMA50 || ind.EMA50 || 0).toFixed(2)),
-        ma60: Number((ind.SMA100 || ind.EMA100 || 0).toFixed(2)),
+        ma5: Number((ind.SMA10 || 0).toFixed(2)),
+        ma10: Number((ind.SMA20 || 0).toFixed(2)),
+        ma20: Number((ind.SMA50 || 0).toFixed(2)),
+        ma60: Number((ind.SMA100 || 0).toFixed(2)),
       },
       kdj: {
         k: Number((ind["Stoch.K"] || 50).toFixed(2)),
@@ -111,13 +121,38 @@ export async function fetchTechnicalData(
         middle: Number((ind["BB.middle"] || 0).toFixed(2)),
         lower: Number((ind["BB.lower"] || 0).toFixed(2)),
       },
-      recommendation: mapRecommendation(ind["Recommend.All"] || q.recommendation_mark || 0),
+      recommendation: mapRecommendation(ind["Recommend.All"] || 0),
       recommendationSummary: { buy: 0, sell: 0, neutral: 0 },
     };
   } catch (error) {
-    console.error("[TradingView] Error:", error);
-    return generateMockData(code, stockName);
+    console.error("[TradingView] RapidAPI error:", error);
+    return null;
   }
+}
+
+export async function fetchTechnicalData(
+  stockCode: string,
+  stockName?: string
+): Promise<TechnicalIndicators | null> {
+  const code = stockCode.replace(/\D/g, "");
+
+  // 1. 优先尝试 Python 服务（免费、无限制）
+  const pythonData = await fetchFromPythonService(code, stockName);
+  if (pythonData) return pythonData;
+
+  // 2. 降级到 RapidAPI（有限流）
+  const rapidData = await fetchFromRapidAPI(code, stockName);
+  if (rapidData) return rapidData;
+
+  // 3. 最后使用模拟数据
+  return generateMockData(code, stockName);
+}
+
+function toTVSymbol(code: string): string {
+  if (code.startsWith("6")) return `SSE:${code}`;
+  if (code.startsWith("0") || code.startsWith("3")) return `SZSE:${code}`;
+  if (code.startsWith("8") || code.startsWith("4")) return `BSE:${code}`;
+  return `SSE:${code}`;
 }
 
 function mapRecommendation(mark: number): string {
