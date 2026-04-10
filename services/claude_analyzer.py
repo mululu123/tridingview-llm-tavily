@@ -1,15 +1,21 @@
-"""AI 分析服务 — 调用智谱 GLM-5 API 进行综合分析"""
+"""AI 分析服务 — 通过 Anthropic 兼容接口调用 GLM-5"""
 
 import os
 from pathlib import Path
 
-from zhipuai import ZhipuAI
+from anthropic import Anthropic
+from dotenv import load_dotenv
+
+load_dotenv()
 
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
-def get_client() -> ZhipuAI:
-    return ZhipuAI(api_key=os.environ["ZHIPU_API_KEY"])
+def get_client() -> Anthropic:
+    return Anthropic(
+        api_key=os.environ["ZHIPU_API_KEY"],
+        base_url="https://api.z.ai/api/anthropic",
+    )
 
 
 def _load_prompt(filename: str) -> str:
@@ -26,11 +32,12 @@ def analyze_stock(technical_data: str, news_data: str) -> str:
     )
 
     client = get_client()
-    response = client.chat.completions.create(
+    message = client.messages.create(
         model="glm-5",
+        max_tokens=4096,
         messages=[{"role": "user", "content": filled_prompt}],
     )
-    return response.choices[0].message.content
+    return message.content[0].text
 
 
 def analyze_market(market_data: str) -> str:
@@ -39,8 +46,9 @@ def analyze_market(market_data: str) -> str:
     filled_prompt = prompt_template.replace("{market_data}", market_data)
 
     client = get_client()
-    response = client.chat.completions.create(
+    message = client.messages.create(
         model="glm-5",
+        max_tokens=4096,
         messages=[{"role": "user", "content": filled_prompt}],
     )
-    return response.choices[0].message.content
+    return message.content[0].text
