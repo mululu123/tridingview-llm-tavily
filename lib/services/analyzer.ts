@@ -1,12 +1,11 @@
-// AI 分析服务 - 使用 GLM-5 (z.ai Anthropic 兼容接口)
+// AI 分析服务 - 使用智谱 GLM-5 (Anthropic 兼容接口)
 
 import { TechnicalIndicators, formatTechnicalData } from "./tradingview";
 import { SearchResult, formatSearchResults } from "./tavily";
-import fs from "fs";
-import path from "path";
 
+// 智谱 AI Anthropic 兼容接口
 const ZHIPU_API_KEY = process.env.ZHIPU_API_KEY || "";
-const ZHIPU_BASE_URL = "https://api.z.ai/api/anthropic";
+const ZHIPU_API_URL = "https://open.bigmodel.cn/api/anthropic/messages";
 
 // 个股分析 Prompt
 const STOCK_ANALYSIS_PROMPT = `你是一个专业的A股短线交易分析助手。根据以下技术数据和消息面信息，对该股票进行短线体检评分。
@@ -82,32 +81,22 @@ const MARKET_HOT_PROMPT = `你是一个专业的A股市场分析助手。根据�
 - **建议关注方向：** {1句话}
 - **风险提示：** {1句话}`;
 
-function loadPrompt(filename: string): string {
-  try {
-    const promptPath = path.join(process.cwd(), "prompts", filename);
-    return fs.readFileSync(promptPath, "utf-8");
-  } catch {
-    return "";
-  }
-}
-
-interface AnthropicMessage {
-  role: string;
-  content: string;
-}
-
 interface AnthropicResponse {
-  content: Array<{ type: string; text: string }>;
+  content?: Array<{ type: string; text: string }>;
+  error?: {
+    type: string;
+    message: string;
+  };
 }
 
-async function callGLM5(systemPrompt: string, userPrompt: string): Promise<string> {
+async function callGLM(systemPrompt: string, userPrompt: string): Promise<string> {
   if (!ZHIPU_API_KEY) {
     console.error("ZHIPU_API_KEY not configured");
-    return "AI 服务未配置，请检查环境变量。";
+    return "⚠️ AI 服务未配置，请检查环境变量 ZHIPU_API_KEY。";
   }
 
   try {
-    const response = await fetch(`${ZHIPU_BASE_URL}/messages`, {
+    const response = await fetch(ZHIPU_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -117,24 +106,30 @@ async function callGLM5(systemPrompt: string, userPrompt: string): Promise<strin
       body: JSON.stringify({
         model: "glm-5",
         max_tokens: 4096,
+        system: systemPrompt,
         messages: [
           { role: "user", content: userPrompt },
         ],
-        system: systemPrompt || undefined,
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`GLM-5 API error: ${response.status} - ${errorText}`);
-      return `分析失败: ${response.status}`;
+    const data = (await response.json()) as AnthropicResponse;
+
+    // 检查 API 错误
+    if (data.error) {
+      console.error("Anthropic API error:", data.error);
+      return `⚠️ AI 分析失败: ${data.error.message}`;
     }
 
-    const data = (await response.json()) as AnthropicResponse;
-    return data.content[0]?.text || "分析失败，请稍后重试。";
+    if (!response.ok) {
+      console.error(`GLM API error: ${response.status}`);
+      return `⚠️ AI 分析失败，请稍后重试 (错误码: ${response.status})`;
+    }
+
+    return data.content?.[0]?.text || "分析结果为空，请重试。";
   } catch (error) {
-    console.error("Error calling GLM-5:", error);
-    return "分析服务异常，请稍后重试。";
+    console.error("Error calling GLM:", error);
+    return "⚠️ AI 服务连接失败，请检查网络后重试。";
   }
 }
 
@@ -145,7 +140,6 @@ export async function analyzeStock(
   technicalData: TechnicalIndicators,
   newsResults: SearchResult[]
 ): Promise<string> {
-  const systemPrompt = loadPrompt("stock_analysis.md") || STOCK_ANALYSIS_PROMPT;
   const technicalText = formatTechnicalData(technicalData);
   const newsText = formatSearchResults(newsResults);
 
@@ -158,14 +152,13 @@ ${newsText}
 
 请按照评分规则进行分析，给出详细的技术面评分和操作建议。`.trim();
 
-  return callGLM5(systemPrompt, userPrompt);
+  return callGLM(STOCK_ANALYSIS_PROMPT, userPrompt);
 }
 
 /**
  * 市场热点分析
  */
 export async function analyzeMarketHot(newsResults: SearchResult[]): Promise<string> {
-  const systemPrompt = loadPrompt("market_hot.md") || MARKET_HOT_PROMPT;
   const newsText = formatSearchResults(newsResults);
 
   const userPrompt = `
@@ -174,5 +167,5 @@ ${newsText}
 
 请按照分析规则，总结今日市场热点板块。`.trim();
 
-  return callGLM5(systemPrompt, userPrompt);
+  return callGLM(MARKET_HOT_PROMPT, userPrompt);
 }
