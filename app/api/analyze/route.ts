@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchTechnicalData } from "@/lib/services/tradingview";
-import { searchStockNews } from "@/lib/services/tavily";
-import { analyzeStock } from "@/lib/services/analyzer";
+import { analyzeStockWithSituationalAwareness } from "@/lib/services/analyzer";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
@@ -29,14 +28,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "获取数据失败，请重试" }, { status: 500 });
     }
 
-    // 搜索新闻
-    const newsResults = await searchStockNews(
+    // 深度分析（带事态感知）
+    const analysis = await analyzeStockWithSituationalAwareness(
+      technicalData,
       stockCode || technicalData.symbol,
       technicalData.name
     );
-
-    // AI 分析
-    const analysis = await analyzeStock(technicalData, newsResults.results);
 
     // 保存历史
     try {
@@ -48,7 +45,6 @@ export async function POST(request: NextRequest) {
         analysis_result: analysis,
         raw_data: {
           technical: technicalData,
-          news: newsResults.results.slice(0, 5),
         },
       });
     } catch (e) {
@@ -62,7 +58,6 @@ export async function POST(request: NextRequest) {
         stockName: technicalData.name,
         analysis,
         technical: technicalData,
-        newsCount: newsResults.results.length,
       },
     });
   } catch (error) {
