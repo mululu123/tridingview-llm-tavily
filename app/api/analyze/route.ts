@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchTechnicalData } from "@/lib/services/tradingview";
 import { searchStockNews } from "@/lib/services/tavily";
-import { analyzeStock } from "@/lib/services/analyzer";
+import { analyzeWithEvents } from "@/lib/services/analyzer";
+import { getStockSector } from "@/lib/services/stock-sector";
+import { crawlGlobalEvents, matchEventsForSector, GlobalEvent } from "@/lib/services/event-crawler";
 import { createClient } from "@/lib/supabase/server";
+
+// 事件缓存
+let cachedEvents: GlobalEvent[] = [];
+let lastCrawlTime = 0;
+const CACHE_DURATION = 60 * 60 * 1000; // 1小时
+
+async function getEvents(): Promise<GlobalEvent[]> {
+  const now = Date.now();
+  if (cachedEvents.length > 0 && now - lastCrawlTime < CACHE_DURATION) {
+    return cachedEvents;
+  }
+  cachedEvents = await crawlGlobalEvents();
+  lastCrawlTime = now;
+  return cachedEvents;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,8 +30,6 @@ export async function POST(request: NextRequest) {
     }
 
     const trimmedInput = input.trim();
-
-    // 提取股票代码
     const codeMatch = trimmedInput.match(/\d{6}/);
     const stockCode = codeMatch ? codeMatch[0] : "";
     const stockName = stockCode
@@ -27,13 +42,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "获取数据失败" }, { status: 500 });
     }
 
-    // 2. 搜索新闻
+    // 2. 获取股票行业
+    const sector = getStockSector(stockCode || technicalData.symbol);
+
+    // 3. 获取相关行业事件
+    const allEvents = await getEvents();
+    const relatedEvents = matchEventsForSector(allEvents, sector);
+
+    // 4. 搜索个股新闻
     const newsResults = await searchStockNews(stockCode || technicalData.symbol, technicalData.name);
 
-    // 3. AI 分析买卖点
-    const analysis = await analyzeStock(technicalData, newsResults.results);
+    // 5. AI 综合分析（事件 + 新闻 + 技术）
+    const analysis = await analyzeWithEvents(
+      technicalData,
+      relatedEvents,
+      newsResults.results,
+      sector,
+      stockName || technicalData.name
+    );
 
-    // 4. 保存历史
+    // 6. 保存历史
     try {
       const supabase = await createClient();
       await supabase.from("analysis_history").insert({
@@ -41,7 +69,11 @@ export async function POST(request: NextRequest) {
         stock_code: stockCode || technicalData.symbol,
         stock_name: technicalData.name,
         analysis_result: analysis,
-        raw_data: { technical: technicalData },
+        raw_data: {
+          technical: technicalData,
+          sector,
+          eventsCount: relatedEvents.length,
+        },
       });
     } catch (e) {
       console.error("Save history error:", e);
@@ -52,8 +84,10 @@ export async function POST(request: NextRequest) {
       data: {
         stockCode: stockCode || technicalData.symbol,
         stockName: technicalData.name,
+        sector,
         analysis,
         technical: technicalData,
+        relatedEvents: relatedEvents.slice(0, 5),
       },
     });
   } catch (error) {

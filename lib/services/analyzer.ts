@@ -1,142 +1,71 @@
-// AI 分析服务 - 使用智谱 GLM-5
+// AI 分析服务 - 事态感知版本
 
 import { TechnicalIndicators, formatTechnicalData } from "./tradingview";
 import { SearchResult } from "./tavily";
+import { GlobalEvent } from "./event-crawler";
 
 const ZHIPU_API_KEY = process.env.ZHIPU_API_KEY || "";
 const ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
-// 个股分析 Prompt - 买卖点判断
-const STOCK_ANALYSIS_PROMPT = `你是一位A股短线交易员。用户不懂技术分析，需要你把技术指标翻译成**具体的买卖点位**。
+// 事态感知分析 Prompt
+const ANALYSIS_PROMPT = `你是一位资深的A股投资分析师。用户关注一只股票，你需要帮他理解：
 
-## 技术指标解读规则
+1. **这个行业的全球事态**：最近发生了什么大事？有什么影响？
+2. **个股情况**：技术面、消息面如何？
+3. **综合判断**：现在值得关注吗？
 
-### RSI(14)
-- < 30：超卖区，可能是买入机会
-- 30-70：正常区间
-- > 70：超买区，注意回调风险
-
-### MACD
-- DIF上穿DEA：金叉，买入信号
-- DIF下穿DEA：死叉，卖出信号
-- 柱状线由负转正：趋势转强
-- 柱状线由正转负：趋势转弱
-
-### KDJ
-- K上穿D：金叉，买入信号
-- K下穿D：死叉，卖出信号
-- J < 20：超卖
-- J > 100：超买
-
-### 布林带
-- 价格触及下轨：支撑位，可能反弹
-- 价格触及上轨：压力位，可能回调
-- 布林带收窄：变盘信号
-
-### 成交量
-- 放量上涨：买盘强劲
-- 放量下跌：抛压大
-- 缩量：观望情绪
+## 分析原则
+- 客观：基于事实，不做主观臆断
+- 简洁：信息密度高，不废话
+- 实用：给出有价值的洞察
 
 ## 输出格式
 
-### 📊 技术面评分：XX/100
+---
 
-| 指标 | 数值 | 信号 | 得分 |
-|------|------|------|------|
-| RSI | {值} | {超买/超卖/中性} | {分数} |
-| MACD | DIF={v}, DEA={v} | {金叉/死叉/中性} | {分数} |
-| KDJ | K={v}, D={v}, J={v} | {金叉/死叉/超买/超卖} | {分数} |
-| 布林带 | 价格位置 | {支撑位/压力位/中轨} | {分数} |
-| 成交量 | {值} | {放量/缩量} | {分数} |
+## 📡 行业事态（{行业名称}）
 
-### 📰 消息面：利好/利空/中性
+**过去72小时重要事件**：
+{列出2-3条最重要的事件，每条1句话}
 
-{关键信息1-2条}
+**事态判断**：
+{利好/利空/中性} - {一句话说明为什么}
 
 ---
 
-## 🎯 操作建议
+## 📰 个股消息面
 
-**方向**：{买入 / 观望 / 卖出}
+{关键消息1-2条，每条1句话}
 
-**买入价**：{具体价格或区间，如"回调到XX元附近可买入"}
+**消息面判断**：{利好/利空/中性}
 
-**卖出价**：{目标价位}
+---
 
-**止损价**：{跌破XX元止损}
+## 🔬 技术面快扫
 
-**理由**：{一句话说明为什么这个买卖点}
+| 指标 | 数值 | 解读 |
+|------|------|------|
+| RSI | {值} | {超买/超卖/中性} |
+| MACD | {值} | {金叉/死叉/趋势} |
+| 成交量 | {值} | {放量/缩量} |
+
+**技术面判断**：{偏多/偏空/中性}
+
+---
+
+## 💡 综合判断
+
+**当前状态**：{机会/观望/风险}
+
+**关键逻辑**：
+{2-3句话说明核心逻辑}
+
+**操作建议**：
+{针对用户持仓情况的具体建议，如：空仓可关注回调机会，持仓可继续持有}
 
 ---
 
 *免责声明：仅供参考，不构成投资建议*`;
-
-// 市场热点 Prompt - 事态感知版本
-const MARKET_HOT_PROMPT = `你是一位A股市场观察员。分析今日市场热点，帮助用户把握资金流向。
-
-## 分析框架
-
-### 一、市场情绪感知
-- 今日涨跌家数对比
-- 成交量变化（放量/缩量）
-- 北向资金流向
-
-### 二、热点板块提取
-从搜索结果中识别：
-1. 今日涨停最多的板块（题材）
-2. 板块驱动逻辑（政策/事件/业绩）
-3. 板块内龙头股（最早涨停、封单最大）
-4. 板块情绪阶段（启动/加速/高潮/分歧/退潮）
-
-### 三、风险提示
-- 是否有高位板块在退潮？
-- 是否有亏钱效应扩散？
-
-## 输出格式
-
----
-
-## 📈 今日市场概览
-
-**日期**: {日期}
-**情绪**: {贪婪/中性/恐惧}
-**成交量**: {放量/缩量} | {估算金额}
-
----
-
-## 🔥 Top 3 热门板块
-
-### 1️⃣ {板块名称}
-| 项目 | 内容 |
-|------|------|
-| 驱动逻辑 | {政策/事件/业绩} {具体内容} |
-| 龙头股 | {代码 名称} - {涨停时间} |
-| 情绪阶段 | {启动/加速/高潮/分歧} |
-| 可持续性 | {高/中/低} |
-
-### 2️⃣ {板块名称}
-...
-
-### 3️⃣ {板块名称}
-...
-
----
-
-## 💰 资金动向
-
-**北向资金**: {流入/流出} {金额}
-**主力板块**: {资金流入最多的板块}
-
----
-
-## ⚠️ 风险提示
-
-{高位退潮板块或亏钱效应区域}
-
----
-
-**明日关注**: {1-2个值得跟踪的方向}`;
 
 interface ZhipuResponse {
   choices?: Array<{
@@ -183,29 +112,75 @@ async function callGLM(systemPrompt: string, userPrompt: string): Promise<string
 }
 
 /**
- * 格式化新闻结果
+ * 格式化事件
  */
-function formatNewsResults(results: SearchResult[]): string {
-  if (results.length === 0) return "暂无相关新闻";
-  return results
+function formatEvents(events: GlobalEvent[]): string {
+  if (events.length === 0) return "暂无相关行业事件";
+
+  return events
     .slice(0, 5)
-    .map((r, i) => `${i + 1}. ${r.title}\n${r.content?.slice(0, 150) || ""}`)
+    .map((e, i) => `${i + 1}. **${e.title}**\n   ${e.summary.slice(0, 100)}...`)
     .join("\n\n");
 }
 
 /**
- * 个股分析
+ * 格式化新闻
+ */
+function formatNews(results: SearchResult[]): string {
+  if (results.length === 0) return "暂无相关新闻";
+
+  return results
+    .slice(0, 3)
+    .map((r, i) => `${i + 1}. ${r.title}\n   ${r.content?.slice(0, 100) || ""}...`)
+    .join("\n\n");
+}
+
+/**
+ * 事态感知综合分析
+ */
+export async function analyzeWithEvents(
+  technicalData: TechnicalIndicators,
+  events: GlobalEvent[],
+  news: SearchResult[],
+  sector: string,
+  stockName: string
+): Promise<string> {
+  const technicalText = formatTechnicalData(technicalData);
+  const eventsText = formatEvents(events);
+  const newsText = formatNews(news);
+
+  const userPrompt = `## 股票信息
+- 名称：${stockName}
+- 所属行业：${sector}
+
+## 行业事态（${sector}）
+${eventsText}
+
+## 个股新闻
+${newsText}
+
+## 技术数据
+${technicalText}
+
+---
+请给出综合分析。`;
+
+  return callGLM(ANALYSIS_PROMPT, userPrompt);
+}
+
+/**
+ * 简单分析（无事件）
  */
 export async function analyzeStock(
   technicalData: TechnicalIndicators,
   newsResults: SearchResult[]
 ): Promise<string> {
   const technicalText = formatTechnicalData(technicalData);
-  const newsText = formatNewsResults(newsResults);
+  const newsText = formatNews(newsResults);
 
   return callGLM(
-    STOCK_ANALYSIS_PROMPT,
-    `## 技术数据\n${technicalText}\n\n## 消息面\n${newsText}\n\n请给出买卖点建议。`
+    ANALYSIS_PROMPT,
+    `## 技术数据\n${technicalText}\n\n## 新闻面\n${newsText}\n\n请给出分析。`
   );
 }
 
@@ -218,8 +193,15 @@ export async function analyzeMarketHot(newsResults: SearchResult[]): Promise<str
     .map((r, i) => `${i + 1}. ${r.title}\n${r.content?.slice(0, 150) || ""}`)
     .join("\n\n");
 
-  return callGLM(
-    MARKET_HOT_PROMPT,
-    `## 市场信息\n${newsText}\n\n请总结今日热点。`
-  );
+  const MARKET_PROMPT = `你是A股市场观察员。根据以下信息，总结今日市场热点。
+
+输出格式：
+1. **Top 3 热门板块**（板块名 + 驱动逻辑 + 龙头股）
+2. **市场情绪**（贪婪/中性/恐惧）
+3. **关注方向**（1-2个值得跟踪的方向）
+
+## 市场信息
+${newsText}`;
+
+  return callGLM(MARKET_PROMPT, newsText);
 }
