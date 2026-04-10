@@ -60,6 +60,11 @@ def get_stock_data_ta(symbol: str) -> dict:
     return {
         "quote": _extract_quote_ta(indicators),
         "ta": _extract_ta(indicators, analysis),
+        "info": {
+            "symbol": sym,
+            "exchange": exchange,
+            "tv_symbol": f"{exchange}:{sym}",
+        },
     }
 
 
@@ -114,13 +119,18 @@ def _request_with_retry(url: str, params: dict = None, max_retries: int = 3) -> 
 def get_stock_data_rapidapi(symbol: str) -> dict:
     """通过 RapidAPI 获取技术数据"""
     tv_symbol = format_stock_code(symbol)
-    result = {"quote": {}, "ta": {}}
+    result = {"quote": {}, "ta": {}, "info": {"tv_symbol": tv_symbol}}
 
     try:
         data = _request_with_retry(f"{BASE_URL}/api/quote/{tv_symbol}")
         if data.get("success") and "data" in data:
             d = data["data"]
-            result["quote"] = d["data"] if isinstance(d, dict) and "data" in d else d
+            quote_data = d["data"] if isinstance(d, dict) and "data" in d else d
+            result["quote"] = quote_data
+            # 提取股票名称和简介
+            result["info"]["name"] = quote_data.get("short_name") or quote_data.get("name") or quote_data.get("description")
+            result["info"]["industry"] = quote_data.get("industry")
+            result["info"]["description"] = quote_data.get("business_description")
     except Exception as e:
         result["quote"] = {"error": str(e)}
 
@@ -151,9 +161,31 @@ def get_stock_data(symbol: str, source: str = "ta") -> dict:
 
 def format_technical_data(data: dict, source: str = "ta") -> str:
     """将技术数据格式化为 Prompt 友好的文本"""
+    parts = []
+    info = data.get("info", {})
+
+    # 股票标识头部
+    tv_symbol = info.get("tv_symbol", "")
+    name = info.get("name", "")
+    industry = info.get("industry", "")
+    description = info.get("description", "")
+
+    if tv_symbol:
+        header = f"### 股票: {tv_symbol}"
+        if name:
+            header += f"（{name}）"
+        parts.append(header)
+    if industry:
+        parts.append(f"- 行业: {industry}")
+    if description:
+        parts.append(f"- 简介: {description[:200]}")
+
+    if parts:
+        parts.append("")
+
     if source == "rapidapi":
-        return _format_rapidapi(data)
-    return _format_ta(data)
+        return "\n".join(parts) + "\n" + _format_rapidapi(data)
+    return "\n".join(parts) + "\n" + _format_ta(data)
 
 
 def _format_ta(data: dict) -> str:

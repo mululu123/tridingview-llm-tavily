@@ -62,13 +62,19 @@ with tab1:
             try:
                 stock_data = get_stock_data(stock_input, source=data_source)
                 tech_text = format_technical_data(stock_data, source=data_source)
-                progress.progress(40, text="技术数据获取完成，搜索消息面...")
+                # 从数据中获取实际股票名称
+                info = stock_data.get("info", {})
+                display_name = info.get("name") or stock_name.strip() or stock_input
+                display_symbol = info.get("tv_symbol") or symbol
+                progress.progress(40, text=f"技术数据获取完成，搜索消息面...")
             except Exception as e:
                 st.error(f"获取 TradingView 数据失败: {e}")
                 tech_text = "技术数据获取失败"
+                display_name = stock_name.strip() or stock_input
+                display_symbol = symbol
 
             try:
-                name = stock_name.strip() if stock_name.strip() else stock_input
+                name = display_name
                 news_text = search_stock_news(name, stock_input)
                 progress.progress(70, text="消息面搜索完成，AI 分析中...")
             except Exception as e:
@@ -79,7 +85,7 @@ with tab1:
                 result = analyze_stock(tech_text, news_text)
                 progress.progress(100, text="分析完成！")
                 st.markdown(result)
-                add_stock_record(stock_input, name, result)
+                add_stock_record(stock_input, f"{display_symbol} {display_name}", result)
             except Exception as e:
                 st.error(f"AI 分析失败: {e}")
 
