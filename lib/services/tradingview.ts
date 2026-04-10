@@ -1,82 +1,75 @@
-// TradingView 数据获取服务 - 获取 A股技术指标
+// TradingView 数据获取服务
 
 export interface TechnicalIndicators {
-  symbol: string
-  name: string
-  close: number
-  change: number
-  changePercent: number
-  volume: number
-  rsi: number
+  symbol: string;
+  name: string;
+  close: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  rsi: number;
   macd: {
-    macd: number
-    signal: number
-    histogram: number
-  }
+    macd: number;
+    signal: number;
+    histogram: number;
+  };
   ma: {
-    ma5: number
-    ma10: number
-    ma20: number
-    ma60: number
-  }
+    ma5: number;
+    ma10: number;
+    ma20: number;
+    ma60: number;
+  };
   kdj: {
-    k: number
-    d: number
-    j: number
-  }
+    k: number;
+    d: number;
+    j: number;
+  };
   bollinger: {
-    upper: number
-    middle: number
-    lower: number
-  }
-  recommendation: string
+    upper: number;
+    middle: number;
+    lower: number;
+  };
+  recommendation: string;
   recommendationSummary: {
-    buy: number
-    sell: number
-    neutral: number
-  }
+    buy: number;
+    sell: number;
+    neutral: number;
+  };
 }
 
-// 转换股票代码为 TradingView 格式
-function convertToTVSymbol(stockCode: string): string {
-  const code = stockCode.replace(/[^0-9]/g, "")
-  if (code.startsWith("6")) {
-    return `SSE:${code}`
-  } else if (code.startsWith("0") || code.startsWith("3")) {
-    return `SZSE:${code}`
-  } else if (code.startsWith("8") || code.startsWith("4")) {
-    return `BSE:${code}`
-  }
-  return `SSE:${code}`
+// 转换为 TradingView 格式
+function toTVSymbol(code: string): string {
+  const c = code.replace(/\D/g, "");
+  if (c.startsWith("6")) return `SSE:${c}`;
+  if (c.startsWith("0") || c.startsWith("3")) return `SZSE:${c}`;
+  if (c.startsWith("8") || c.startsWith("4")) return `BSE:${c}`;
+  return `SSE:${c}`;
 }
 
-// 获取股票名称
-function getStockName(stockCode: string): string {
-  const code = stockCode.replace(/[^0-9]/g, "")
-  const stockNames: Record<string, string> = {
-    "000001": "平安银行",
-    "600519": "贵州茅台",
-    "000858": "五粮液",
-    "600036": "招商银行",
-    "601318": "中国平安",
-    "000333": "美的集团",
-    "600276": "恒瑞医药",
-    "000651": "格力电器",
-    "601888": "中国中免",
-    "600900": "长江电力",
-  }
-  return stockNames[code] || `股票${code}`
+// 从代码推断股票名称
+function inferStockName(code: string): string {
+  const knownStocks: Record<string, string> = {
+    "600519": "贵州茅台", "000001": "平安银行", "000002": "万科A",
+    "600036": "招商银行", "601318": "中国平安", "000858": "五粮液",
+    "000333": "美的集团", "000651": "格力电器", "600900": "长江电力",
+    "601888": "中国中免", "300750": "宁德时代", "300059": "东方财富",
+  };
+  return knownStocks[code] || `股票${code}`;
 }
 
-export async function fetchTechnicalData(stockCode: string): Promise<TechnicalIndicators | null> {
-  const rapidApiKey = process.env.RAPIDAPI_KEY
+export async function fetchTechnicalData(
+  stockCode: string,
+  stockName?: string
+): Promise<TechnicalIndicators | null> {
+  const rapidApiKey = process.env.RAPIDAPI_KEY;
+  const code = stockCode.replace(/\D/g, "");
+  const symbol = toTVSymbol(code);
 
+  // 没有 API Key 时返回模拟数据
   if (!rapidApiKey) {
-    console.error("RAPIDAPI_KEY not configured")
-    return generateMockData(stockCode)
+    console.log("RAPIDAPI_KEY not configured, using mock data");
+    return generateMockData(code, stockName);
   }
-
-  const symbol = convertToTVSymbol(stockCode)
 
   try {
     // 获取报价
@@ -88,15 +81,15 @@ export async function fetchTechnicalData(stockCode: string): Promise<TechnicalIn
           "x-rapidapi-key": rapidApiKey,
         },
       }
-    )
+    );
 
     if (!quoteResp.ok) {
-      console.error(`TradingView quote API error: ${quoteResp.status}`)
-      return generateMockData(stockCode)
+      console.error(`Quote API error: ${quoteResp.status}`);
+      return generateMockData(code, stockName);
     }
 
-    const quoteData = await quoteResp.json()
-    const quote = quoteData?.data?.data || {}
+    const quoteData = await quoteResp.json();
+    const quote = quoteData?.data?.data || {};
 
     // 获取技术指标
     const taResp = await fetch(
@@ -107,57 +100,58 @@ export async function fetchTechnicalData(stockCode: string): Promise<TechnicalIn
           "x-rapidapi-key": rapidApiKey,
         },
       }
-    )
+    );
 
-    const taData = taResp.ok ? await taResp.json() : {}
-    const indicators = taData?.data || {}
+    const taData = taResp.ok ? await taResp.json() : {};
+    const ind = taData?.data || {};
+
+    const name = quote.short_name || quote.description || stockName || inferStockName(code);
 
     return {
-      symbol: symbol,
-      name: quote.short_name || quote.description || getStockName(stockCode),
+      symbol,
+      name,
       close: quote.lp || 0,
       change: quote.change || 0,
       changePercent: quote.change_pct || 0,
       volume: quote.volume || 0,
-      rsi: indicators.RSI || 50,
+      rsi: ind.RSI || 50,
       macd: {
-        macd: indicators["MACD.macd"] || 0,
-        signal: indicators["MACD.signal"] || 0,
-        histogram: indicators["MACD.hist"] || 0,
+        macd: ind["MACD.macd"] || 0,
+        signal: ind["MACD.signal"] || 0,
+        histogram: ind["MACD.hist"] || 0,
       },
       ma: {
-        ma5: indicators.EMA10 || indicators.SMA5 || 0,
-        ma10: indicators.EMA20 || indicators.SMA10 || 0,
-        ma20: indicators.EMA20 || indicators.SMA20 || 0,
-        ma60: indicators.EMA50 || indicators.SMA50 || 0,
+        ma5: ind.SMA5 || ind.EMA5 || 0,
+        ma10: ind.SMA10 || ind.EMA10 || 0,
+        ma20: ind.SMA20 || ind.EMA20 || 0,
+        ma60: ind.SMA60 || ind.EMA60 || 0,
       },
       kdj: {
-        k: indicators["Stoch.K"] || 50,
-        d: indicators["Stoch.D"] || 50,
-        j: (indicators["Stoch.K"] || 50) * 3 - (indicators["Stoch.D"] || 50) * 2,
+        k: ind["Stoch.K"] || 50,
+        d: ind["Stoch.D"] || 50,
+        j: (ind["Stoch.K"] || 50) * 3 - (ind["Stoch.D"] || 50) * 2,
       },
       bollinger: {
-        upper: indicators["BB.upper"] || 0,
-        middle: indicators["BB.middle"] || 0,
-        lower: indicators["BB.lower"] || 0,
+        upper: ind["BB.upper"] || 0,
+        middle: ind["BB.middle"] || 0,
+        lower: ind["BB.lower"] || 0,
       },
-      recommendation: "NEUTRAL",
-      recommendationSummary: { buy: 0, sell: 0, neutral: 0 },
-    }
+      recommendation: quote.recommendation || "NEUTRAL",
+      recommendationSummary: quote.recommendationSummary || { buy: 0, sell: 0, neutral: 0 },
+    };
   } catch (error) {
-    console.error("Error fetching TradingView data:", error)
-    return generateMockData(stockCode)
+    console.error("TradingView fetch error:", error);
+    return generateMockData(code, stockName);
   }
 }
 
-function generateMockData(stockCode: string): TechnicalIndicators {
-  const code = stockCode.replace(/[^0-9]/g, "")
-  const basePrice = 10 + Math.random() * 90
-  const change = (Math.random() - 0.5) * 5
+function generateMockData(code: string, name?: string): TechnicalIndicators {
+  const basePrice = 10 + Math.random() * 90;
+  const change = (Math.random() - 0.5) * 5;
 
   return {
-    symbol: convertToTVSymbol(stockCode),
-    name: getStockName(stockCode),
+    symbol: toTVSymbol(code),
+    name: name || inferStockName(code),
     close: Number(basePrice.toFixed(2)),
     change: Number(change.toFixed(2)),
     changePercent: Number(((change / basePrice) * 100).toFixed(2)),
@@ -169,15 +163,15 @@ function generateMockData(stockCode: string): TechnicalIndicators {
       histogram: Number((Math.random() * 0.5 - 0.25).toFixed(4)),
     },
     ma: {
-      ma5: Number((basePrice * (0.98 + Math.random() * 0.04)).toFixed(2)),
-      ma10: Number((basePrice * (0.96 + Math.random() * 0.08)).toFixed(2)),
-      ma20: Number((basePrice * (0.94 + Math.random() * 0.12)).toFixed(2)),
-      ma60: Number((basePrice * (0.9 + Math.random() * 0.2)).toFixed(2)),
+      ma5: Number((basePrice * 0.99).toFixed(2)),
+      ma10: Number((basePrice * 0.98).toFixed(2)),
+      ma20: Number((basePrice * 0.96).toFixed(2)),
+      ma60: Number((basePrice * 0.92).toFixed(2)),
     },
     kdj: {
-      k: Number((30 + Math.random() * 40).toFixed(2)),
-      d: Number((30 + Math.random() * 40).toFixed(2)),
-      j: Number((20 + Math.random() * 60).toFixed(2)),
+      k: Number((40 + Math.random() * 20).toFixed(2)),
+      d: Number((40 + Math.random() * 20).toFixed(2)),
+      j: Number((30 + Math.random() * 40).toFixed(2)),
     },
     bollinger: {
       upper: Number((basePrice * 1.05).toFixed(2)),
@@ -190,7 +184,7 @@ function generateMockData(stockCode: string): TechnicalIndicators {
       sell: Math.floor(Math.random() * 10),
       neutral: Math.floor(Math.random() * 10),
     },
-  }
+  };
 }
 
 export function formatTechnicalData(data: TechnicalIndicators): string {
@@ -218,5 +212,5 @@ export function formatTechnicalData(data: TechnicalIndicators): string {
 - 买入信号: ${data.recommendationSummary.buy}
 - 卖出信号: ${data.recommendationSummary.sell}
 - 中性信号: ${data.recommendationSummary.neutral}
-  `.trim()
+  `.trim();
 }
