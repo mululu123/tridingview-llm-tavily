@@ -17,7 +17,7 @@ export default function Home() {
               <TrendingUp className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">A股短线助手</h1>
+              <h1 className="text-xl font-bold text-foreground tracking-tight">A股短线助手</h1>
               <p className="text-sm text-muted-foreground">
                 智能个股分析与市场热点追踪
               </p>
