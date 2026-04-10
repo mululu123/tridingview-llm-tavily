@@ -1,90 +1,76 @@
 // AI 分析服务 - 使用智谱 GLM-5
 
 import { TechnicalIndicators, formatTechnicalData } from "./tradingview";
-import { SearchResult, getMarketTimeContext, deepSearchStock } from "./tavily";
+import { SearchResult } from "./tavily";
 
 const ZHIPU_API_KEY = process.env.ZHIPU_API_KEY || "";
 const ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
-// 个股分析 Prompt - 事态感知版本
-const STOCK_ANALYSIS_PROMPT = `你是一位有10年经验的A股短线交易员。你的任务是帮助用户做出**可执行的交易决策**。
+// 个股分析 Prompt - 买卖点判断
+const STOCK_ANALYSIS_PROMPT = `你是一位A股短线交易员。用户不懂技术分析，需要你把技术指标翻译成**具体的买卖点位**。
 
-## 核心原则
-1. **少亏损比多赚钱更重要** - 宁可错过，不可做错
-2. **风险优先** - 先看风险，再看机会
-3. **事态感知** - 理解当前市场情绪和个股事件态势
-4. **操作具体** - 给出明确的买卖点位和止损位
+## 技术指标解读规则
 
-## 分析框架
+### RSI(14)
+- < 30：超卖区，可能是买入机会
+- 30-70：正常区间
+- > 70：超买区，注意回调风险
 
-### 一、事态感知（先理解大局）
-- 当前日期和时间
-- 市场状态：盘前/盘中/盘后
-- 个股是否有重大事件（停牌、复牌、ST、退市风险等）
+### MACD
+- DIF上穿DEA：金叉，买入信号
+- DIF下穿DEA：死叉，卖出信号
+- 柱状线由负转正：趋势转强
+- 柱状线由正转负：趋势转弱
 
-### 二、风险评估（风险优先）
-从搜索结果中识别：
-- 是否有利空公告？（减持、质押、诉讼、业绩下滑）
-- 是否有监管风险？（问询函、警示函、立案调查）
-- 技术面是否破位？（跌破关键支撑、放量下跌）
+### KDJ
+- K上穿D：金叉，买入信号
+- K下穿D：死叉，卖出信号
+- J < 20：超卖
+- J > 100：超买
 
-### 三、机会识别（其次看机会）
-从搜索结果中识别：
-- 是否有利好催化？（业绩大增、订单落地、政策利好）
-- 资金面是否有主力进场？（龙虎榜、机构买入、北向增持）
-- 技术面是否突破？（放量突破、金叉、突破压力位）
+### 布林带
+- 价格触及下轨：支撑位，可能反弹
+- 价格触及上轨：压力位，可能回调
+- 布林带收窄：变盘信号
 
-### 四、操作建议（必须具体）
-- **方向**：买入/观望/卖出
-- **时机**：现在/等回调/等突破
-- **仓位**：轻仓试探/正常仓位/重仓
-- **止损**：跌破XX元止损
-- **止盈**：涨到XX元减仓
+### 成交量
+- 放量上涨：买盘强劲
+- 放量下跌：抛压大
+- 缩量：观望情绪
 
 ## 输出格式
 
----
+### 📊 技术面评分：XX/100
 
-## 📊 事态感知
+| 指标 | 数值 | 信号 | 得分 |
+|------|------|------|------|
+| RSI | {值} | {超买/超卖/中性} | {分数} |
+| MACD | DIF={v}, DEA={v} | {金叉/死叉/中性} | {分数} |
+| KDJ | K={v}, D={v}, J={v} | {金叉/死叉/超买/超卖} | {分数} |
+| 布林带 | 价格位置 | {支撑位/压力位/中轨} | {分数} |
+| 成交量 | {值} | {放量/缩量} | {分数} |
 
-**当前状态**: {日期} {时间} | {市场状态}
-**个股事件**: {是否有重大事件，无则写"正常交易"}
+### 📰 消息面：利好/利空/中性
 
----
-
-## ⚠️ 风险提示
-
-{从搜索结果中提取的风险点，格式：}
-- [风险等级:高/中/低] {具体风险}
-{无风险写"暂无明显风险"}
-
----
-
-## 💡 机会信号
-
-{从搜索结果中提取的机会点，格式：}
-- [信号强度:强/中/弱] {具体机会}
-{无机会写"暂无明显机会"}
+{关键信息1-2条}
 
 ---
 
 ## 🎯 操作建议
 
-**方向**: {买入/观望/卖出}
+**方向**：{买入 / 观望 / 卖出}
 
-**理由**: {一句话核心逻辑}
+**买入价**：{具体价格或区间，如"回调到XX元附近可买入"}
 
-**操作计划**:
-| 项目 | 建议 |
-|------|------|
-| 入场时机 | {具体价位或条件} |
-| 建议仓位 | {轻仓10%/半仓30%/重仓50%} |
-| 止损位 | {具体价位} |
-| 止盈位 | {具体价位} |
+**卖出价**：{目标价位}
+
+**止损价**：{跌破XX元止损}
+
+**理由**：{一句话说明为什么这个买卖点}
 
 ---
 
-**免责声明**: 仅供参考，不构成投资建议。投资有风险，入市需谨慎。`;
+*免责声明：仅供参考，不构成投资建议*`;
 
 // 市场热点 Prompt - 事态感知版本
 const MARKET_HOT_PROMPT = `你是一位A股市场观察员。分析今日市场热点，帮助用户把握资金流向。
@@ -197,121 +183,43 @@ async function callGLM(systemPrompt: string, userPrompt: string): Promise<string
 }
 
 /**
- * 格式化深度搜索结果
+ * 格式化新闻结果
  */
-function formatDeepSearchResults(results: {
-  news: SearchResult[];
-  funds: SearchResult[];
-  events: SearchResult[];
-}): string {
-  const formatSection = (title: string, items: SearchResult[]) => {
-    if (items.length === 0) return `### ${title}\n暂无相关信息`;
-    return `### ${title}\n${items
-      .slice(0, 3)
-      .map((r, i) => `${i + 1}. **${r.title}**\n   ${r.content?.slice(0, 200) || ""}\n   来源: ${r.url}`)
-      .join("\n\n")}`;
-  };
-
-  return [
-    formatSection("📰 新闻面（利好/利空）", results.news),
-    formatSection("💰 资金面（龙虎榜/主力）", results.funds),
-    formatSection("📋 事件面（重组/股权）", results.events),
-  ].join("\n\n---\n\n");
+function formatNewsResults(results: SearchResult[]): string {
+  if (results.length === 0) return "暂无相关新闻";
+  return results
+    .slice(0, 5)
+    .map((r, i) => `${i + 1}. ${r.title}\n${r.content?.slice(0, 150) || ""}`)
+    .join("\n\n");
 }
 
 /**
- * 个股深度分析（带事态感知）
- */
-export async function analyzeStockWithSituationalAwareness(
-  technicalData: TechnicalIndicators,
-  stockCode: string,
-  stockName?: string
-): Promise<string> {
-  // 获取事态上下文
-  const context = getMarketTimeContext();
-
-  // 深度搜索三个维度
-  const deepResults = await deepSearchStock(stockCode, stockName);
-
-  // 格式化技术数据
-  const technicalText = formatTechnicalData(technicalData);
-
-  // 构建用户提示
-  const userPrompt = `## 事态上下文
-- 当前时间: ${context.date} ${context.time}
-- 市场状态: ${context.marketStatus}
-- 交易日: ${context.tradingDay ? "是" : "否"}
-
-## 股票信息
-- 代码: ${stockCode}
-- 名称: ${stockName || "未知"}
-
-## 技术数据
-${technicalText}
-
-## 深度搜索结果
-${formatDeepSearchResults(deepResults)}
-
----
-请基于以上信息，给出你的分析。记住：风险优先，操作具体。`;
-
-  return callGLM(STOCK_ANALYSIS_PROMPT, userPrompt);
-}
-
-/**
- * 兼容旧接口
+ * 个股分析
  */
 export async function analyzeStock(
   technicalData: TechnicalIndicators,
   newsResults: SearchResult[]
 ): Promise<string> {
   const technicalText = formatTechnicalData(technicalData);
-  const newsText = newsResults
-    .slice(0, 8)
-    .map((r, i) => `${i + 1}. ${r.title}\n${r.content?.slice(0, 200) || ""}`)
-    .join("\n\n");
-
-  const context = getMarketTimeContext();
+  const newsText = formatNewsResults(newsResults);
 
   return callGLM(
     STOCK_ANALYSIS_PROMPT,
-    `## 事态上下文
-- 当前时间: ${context.date} ${context.time}
-- 市场状态: ${context.marketStatus}
-
-## 技术数据
-${technicalText}
-
-## 新闻面
-${newsText}
-
----
-请基于以上信息，给出你的分析。`
+    `## 技术数据\n${technicalText}\n\n## 消息面\n${newsText}\n\n请给出买卖点建议。`
   );
 }
 
 /**
- * 市场热点分析（带事态感知）
+ * 市场热点分析
  */
 export async function analyzeMarketHot(newsResults: SearchResult[]): Promise<string> {
-  const context = getMarketTimeContext();
-
   const newsText = newsResults
-    .slice(0, 10)
-    .map((r, i) => `${i + 1}. **${r.title}**\n${r.content?.slice(0, 200) || ""}`)
+    .slice(0, 8)
+    .map((r, i) => `${i + 1}. ${r.title}\n${r.content?.slice(0, 150) || ""}`)
     .join("\n\n");
 
   return callGLM(
     MARKET_HOT_PROMPT,
-    `## 市场信息
-- 日期: ${context.date}
-- 时间: ${context.time}
-- 市场状态: ${context.marketStatus}
-
-## 今日市场新闻
-${newsText}
-
----
-请分析今日市场热点和资金动向。`
+    `## 市场信息\n${newsText}\n\n请总结今日热点。`
   );
 }
