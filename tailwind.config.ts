@@ -1,12 +1,6 @@
-<<<<<<< HEAD
-import type { Config } from "tailwindcss"
-
-const config: Config = {
-=======
 import type { Config } from "tailwindcss";
 
-export default {
->>>>>>> origin/v0/zmpple-7535-fb84d16f
+const config: Config = {
   darkMode: ["class"],
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -15,12 +9,6 @@ export default {
   ],
   theme: {
     extend: {
-<<<<<<< HEAD
-      fontFamily: {
-        sans: ["var(--font-sans)"],
-      },
-=======
->>>>>>> origin/v0/zmpple-7535-fb84d16f
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
@@ -68,19 +56,12 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
-<<<<<<< HEAD
-    },
-  },
-  plugins: [require("tailwindcss-animate")],
-}
-
-export default config
-=======
       fontFamily: {
         sans: ["var(--font-inter)"],
       },
     },
   },
   plugins: [],
-} satisfies Config;
->>>>>>> origin/v0/zmpple-7535-fb84d16f
+};
+
+export default config;
