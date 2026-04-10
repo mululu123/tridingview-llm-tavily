@@ -41,8 +41,8 @@ with tab1:
             symbol = format_stock_code(stock_input)
             st.info(f"正在分析 {symbol} ...")
 
-            # 并行获取数据
-            progress = st.progress(0, text="获取技术数据...")
+            # 获取数据（可能因 API 限流需要等待）
+            progress = st.progress(0, text="获取技术数据（如遇限流会自动重试，请耐心等待）...")
             try:
                 stock_data = get_stock_data(stock_input)
                 tech_text = format_technical_data(stock_data)
