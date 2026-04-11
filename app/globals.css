@@ -4,31 +4,31 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    --background: 210 50% 98%;
+    --foreground: 222 55% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 222 55% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 199 89% 48%;
+    --popover-foreground: 222 55% 8%;
+    --primary: 217 91% 55%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 84% 60%;
+    --secondary: 210 50% 94%;
+    --secondary-foreground: 222 55% 8%;
+    --muted: 210 45% 94%;
+    --muted-foreground: 215 25% 40%;
+    --accent: 217 85% 95%;
+    --accent-foreground: 217 91% 45%;
+    --destructive: 0 85% 55%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 199 89% 48%;
+    --border: 214 40% 88%;
+    --input: 214 40% 88%;
+    --ring: 217 91% 55%;
     --radius: 0.75rem;
-    --chart-1: 199 89% 48%;
-    --chart-2: 160 84% 39%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-1: 217 91% 55%;
+    --chart-2: 160 90% 40%;
+    --chart-3: 35 92% 50%;
+    --chart-4: 280 75% 55%;
+    --chart-5: 340 85% 55%;
   }
 
   .dark {
@@ -86,13 +86,26 @@
   background: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Markdown styles */
-.prose h1, .prose h2, .prose h3, .prose h4 {
-  @apply font-semibold text-foreground mt-6 mb-3;
+/* Markdown styles for AI Analysis Report */
+.prose h1, .prose h2 {
+  @apply font-bold text-foreground mt-8 mb-4 pb-3 border-b-2 border-primary/30 text-lg;
+}
+
+.prose h3 {
+  @apply font-semibold text-foreground mt-6 mb-3 text-base flex items-center gap-2;
+}
+
+.prose h3::before {
+  content: "";
+  @apply w-1 h-5 bg-primary rounded-full inline-block;
+}
+
+.prose h4 {
+  @apply font-medium text-foreground/90 mt-4 mb-2;
 }
 
 .prose p {
-  @apply mb-4 leading-relaxed;
+  @apply mb-4 leading-relaxed text-foreground/85;
 }
 
 .prose ul, .prose ol {
@@ -100,9 +113,55 @@
 }
 
 .prose li {
-  @apply mb-2;
+  @apply mb-2 text-foreground/85;
 }
 
 .prose strong {
-  @apply font-semibold text-foreground;
+  @apply font-semibold text-primary;
+}
+
+.prose table {
+  @apply w-full my-4 border-collapse rounded-lg overflow-hidden;
+}
+
+.prose thead {
+  @apply bg-primary/10;
+}
+
+.prose th {
+  @apply px-4 py-3 text-left font-semibold text-foreground border-b border-primary/20;
+}
+
+.prose td {
+  @apply px-4 py-3 border-b border-border/50;
+}
+
+.prose tr:hover {
+  @apply bg-muted/50;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-primary/50 pl-4 py-2 my-4 bg-primary/5 rounded-r-lg italic text-foreground/80;
+}
+
+/* Section styling for analysis content */
+.analysis-section {
+  @apply p-4 rounded-xl bg-card border border-border/50 mb-4;
+}
+
+.analysis-section-title {
+  @apply flex items-center gap-2 font-semibold text-foreground mb-3;
+}
+
+/* Status badges */
+.status-bullish {
+  @apply text-emerald-600 bg-emerald-50 border border-emerald-200;
+}
+
+.status-bearish {
+  @apply text-red-600 bg-red-50 border border-red-200;
+}
+
+.status-neutral {
+  @apply text-amber-600 bg-amber-50 border border-amber-200;
 }
