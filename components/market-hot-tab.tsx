@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { saveLocalAnalysis } from "@/lib/services/local-storage";
 import ReactMarkdown from "react-markdown";
 import {
   Flame,
@@ -41,6 +42,14 @@ export function MarketHotTab() {
 
       setResult(data.data);
       setLastUpdated(new Date());
+
+      // 保存到本地存储
+      saveLocalAnalysis({
+        id: `market-${Date.now()}`,
+        type: "market_hot",
+        analysis_result: data.data.analysis,
+        created_at: new Date().toISOString(),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "获取失败，请稍后重试");
     } finally {

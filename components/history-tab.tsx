@@ -6,6 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  getLocalAnalysis,
+  deleteLocalAnalysis,
+  LocalAnalysisRecord,
+} from "@/lib/services/local-storage";
 import ReactMarkdown from "react-markdown";
 import {
   History,
@@ -42,16 +47,44 @@ export function HistoryTab() {
     setError(null);
 
     try {
+      // 先尝试从服务器获取
       const response = await fetch(`/api/history?type=${filter}`);
       const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || "获取失败");
+      if (response.ok && data.data?.length > 0) {
+        setRecords(data.data);
+      } else {
+        // 服务器失败或无数据，使用本地存储
+        const localRecords = getLocalAnalysis(
+          filter === "all" ? undefined : filter
+        );
+        setRecords(
+          localRecords.map((r) => ({
+            id: r.id,
+            type: r.type,
+            stock_code: r.stock_code || null,
+            stock_name: r.stock_name || null,
+            analysis_result: r.analysis_result,
+            created_at: r.created_at,
+          }))
+        );
       }
-
-      setRecords(data.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "获取失败");
+      // 网络错误，使用本地存储
+      console.log("Using local storage for history");
+      const localRecords = getLocalAnalysis(
+        filter === "all" ? undefined : filter
+      );
+      setRecords(
+        localRecords.map((r) => ({
+          id: r.id,
+          type: r.type,
+          stock_code: r.stock_code || null,
+          stock_name: r.stock_name || null,
+          analysis_result: r.analysis_result,
+          created_at: r.created_at,
+        }))
+      );
     } finally {
       setLoading(false);
     }
@@ -65,6 +98,7 @@ export function HistoryTab() {
     setDeletingId(id);
 
     try {
+      // 尝试从服务器删除
       const response = await fetch("/api/history", {
         method: "DELETE",
         headers: {
@@ -73,17 +107,21 @@ export function HistoryTab() {
         body: JSON.stringify({ id }),
       });
 
-      if (!response.ok) {
-        throw new Error("删除失败");
+      if (response.ok) {
+        setRecords((prev) => prev.filter((r) => r.id !== id));
+      } else {
+        // 服务器失败，删除本地
+        deleteLocalAnalysis(id);
+        setRecords((prev) => prev.filter((r) => r.id !== id));
       }
-
+    } catch {
+      // 网络错误，删除本地
+      deleteLocalAnalysis(id);
       setRecords((prev) => prev.filter((r) => r.id !== id));
+    } finally {
       if (expandedId === id) {
         setExpandedId(null);
       }
-    } catch (err) {
-      console.error("Delete error:", err);
-    } finally {
       setDeletingId(null);
     }
   };
